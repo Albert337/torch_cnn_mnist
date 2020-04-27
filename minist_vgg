@@ -1,0 +1,208 @@
+from torch import nn
+import torch
+from torch.utils.data import DataLoader
+from torchvision.datasets import mnist
+from torchvision import transforms
+from torch.autograd import Variable
+from torch import optim
+
+class vgg(nn.Module):
+    def __init__(self,vgg_name,cfg,in_channels=3,num_classes=10,bn=False):
+        super(vgg,self).__init__()
+        self.in_channels=in_channels
+        self.vgg_base=self.make_layer(cfg,bn)
+
+        if vgg_name=="vgg16_c":
+            self.fc1=nn.Sequential(
+                nn.Linear(512*8*8,4096),
+                nn.ReLU(inplace=True),
+                nn.Dropout()
+            )
+        else:
+            self.fc1=nn.Sequential(
+                nn.Linear(512*7*7,4096),
+                nn.ReLU(inplace=True),
+                nn.Dropout()
+            )
+
+        self.fc2=nn.Sequential(
+            nn.Linear(4096,4096),
+            nn.ReLU(inplace=True),
+            nn.Dropout()
+        )
+
+        self.fc3=nn.Linear(4096,num_classes)
+
+    def make_layer(self,cfg,bn=False):
+        layers=[]
+        for i in range(len(cfg)):
+            v=cfg[i]
+            print(v)
+            if v=='M':
+                layers+=[nn.MaxPool2d((2,2),stride=2)]
+            else:
+                out_channels,s=v.strip().split("_")
+                out_channels,s=int(out_channels),int(s)
+
+            if bn:
+                layers+=[nn.Conv2d(self.in_channels,out_channels,(s,s),padding=1),
+                         nn.BatchNorm2d(out_channels),
+                         nn.ReLU(inplace=True)]
+            else:
+                layers+=[nn.Conv2d(self.in_channels,out_channels,(s,s),padding=1),
+                         nn.ReLU(inplace=True)]
+
+            self.in_channels=out_channels
+        print("--*--"*50)
+        print(layers)
+        return nn.Sequential(*layers)
+
+    def forward(self,x):
+        batch_size=x.size()[0]
+        x=nn.functional.interpolate(x,(224,224))
+        x=self.vgg_base(x)
+        print(x.shape)
+        x=x.view(batch_size,-1)
+        x=self.fc1(x)
+        x=self.fc2(x)
+        x=self.fc3(x)
+        return x
+
+
+class VGG(nn.Module):
+    def __init__(self, vgg_name, cfg, in_channels=3,num_classes=10, bn=False):
+        super(VGG, self).__init__()
+        self.in_channels=in_channels
+        self.vgg_base = self.make_layer(cfg, bn)
+
+
+        if vgg_name == 'vgg16_C':
+            self.fc1 = nn.Sequential(nn.Linear(512 * 8 * 8, 4096),
+                                     nn.ReLU(inplace=True),
+                                     nn.Dropout())
+        else:
+            self.fc1 = nn.Sequential(nn.Linear(512 * 7 * 7, 4096),
+                                     nn.ReLU(inplace=True),
+                                     nn.Dropout())
+        self.fc2 = nn.Sequential(nn.Linear(4096, 4096),
+                                 nn.ReLU(inplace=True),
+                                 nn.Dropout())
+        self.fc3 = nn.Linear(4096, num_classes)
+
+    def make_layer(self, cfg, bn=False):
+        layers = []
+        for v in cfg:
+            if v == 'M':
+                layers += [nn.MaxPool2d((2, 2), stride=2)]
+            else:
+                out_channels, s = v.strip().split('_')
+                out_channels, s = int(out_channels), int(s)
+
+                if bn:
+                    layers += [nn.Conv2d(self.in_channels, out_channels, (s, s), padding=1),
+                               nn.BatchNorm2d(out_channels),
+                               nn.ReLU(inplace=True)]
+                else:
+                    layers += [nn.Conv2d(self.in_channels, out_channels, (s, s), padding=1),
+                               nn.ReLU(inplace=True)]
+                self.in_channels = out_channels
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        #import pdb;pdb.set_trace()
+        batch_size = x.size()[0]
+        x=nn.functional.interpolate(x,(224,224))
+        x = self.vgg_base(x)
+        x = x.view(batch_size, -1)
+        x = self.fc1(x)
+        x = self.fc2(x)
+        x = self.fc3(x)
+        return x
+
+
+####读取数据
+def get_data():
+    # train_set=mnist.MNIST('./data',train=True)
+    # test_set=mnist.MNIST('./data',train=False)
+
+    data_tf=transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize([0.5],[0.5])
+    ])
+
+    train_set=mnist.MNIST('./data',train=True,transform=data_tf,download=True)
+    test_set=mnist.MNIST('./data',train=False,transform=data_tf,download=True)
+
+    train_data=DataLoader(train_set,batch_size=64,shuffle=True)
+    test_data=DataLoader(test_set,batch_size=128,shuffle=False)
+
+    return train_data,test_data
+
+def train(vgg_name):
+    train_iter,test_iter=get_data()
+    num_classes=10
+    num_epoches=5
+
+    model=VGG(vgg_name,cfg[vgg_name],1,num_classes=10)
+    loss=nn.CrossEntropyLoss()
+    optimizer=optim.SGD(model.parameters(),lr=1e-1)
+
+    for epoch in range(num_epoches):
+        train_loss,train_acc=0,0
+        for cnt,(img,label) in enumerate(train_iter):
+            #  img,label=Variable(img),Variable(label)
+            #import pdb;pdb.set_trace()
+            out_logits=model(img)
+            cal_loss=loss(out_logits,label)
+
+            optimizer.zero_grad()
+            cal_loss.backward()
+            optimizer.step()
+
+            train_loss+=cal_loss.item()
+            _,pred=out_logits.max(1)
+            train_acc=(pred==label).sum().item()/img.shape[0]
+            print("train epoch:%d,train loss:%f,train_acc:%f"%(epoch,cal_loss.item(),train_acc))
+
+        eval_loss,eval_acc=0,0
+        for img,label in test_iter:
+            #import pdb;pdb.set_trace()
+            #img,label=Variable(img),Variable(label)
+
+            out_=model(img)
+            loss_=loss(out_,label)
+
+            eval_loss+=loss_
+            _,pred=out_.max(1)
+            eval_acc+=(pred==label).sum().item()/img.shape[0]
+        print("test epoch:%d,test_loss:%f,test_acc:%f"%(epoch,eval_loss/len(test_iter),eval_acc/len(test_iter)))
+
+if __name__=="__main__":
+    cfg = {
+        'vgg11_A': ['64_3', 'M',
+                    '128_3', 'M',
+                    '256_3', '256_3', 'M',
+                    '512_3', '512_3', 'M',
+                    '512_3', '512_3', 'M'],
+        'vgg13_B': ['64_3', '64_3', 'M',
+                    '128_3', '128_3', 'M',
+                    '256_3', '256_3', 'M',
+                    '512_3', '512_3', 'M',
+                    '512_3', '512_3', 'M'],
+        'vgg16_C': ['64_3', '64_3', 'M',
+                    '128_3', '128_3', 'M',
+                    '256_3', '256_3', '256_1', 'M',
+                    '512_3', '512_3', '512_1', 'M',
+                    '512_3', '512_3', '512_1','M'],
+        'vgg16_D': ['64_3', '64_3', 'M',
+                    '128_3', '128_3', 'M',
+                    '256_3', '256_3', '256_3', 'M',
+                    '512_3', '512_3', '512_3', 'M',
+                    '512_3', '512_3', '512_3', 'M'],
+        'vgg19_E': ['64_3', '64_3', 'M',
+                    '128_3', '128_3', 'M',
+                    '256_3', '256_3', '256_3', '256_3', 'M',
+                    '512_3', '512_3', '512_3', '512_3', 'M',
+                    '512_3', '512_3', '512_3', '512_3', 'M'],
+    }
+    train('vgg16_C')
