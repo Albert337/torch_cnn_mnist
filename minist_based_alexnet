@@ -1,0 +1,125 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# author：albert time:2020/4/27
+
+from torch import nn
+import torch
+from torch.utils.data import DataLoader
+from torchvision.datasets import mnist
+from torchvision import transforms
+from torch.autograd import Variable
+from torch import optim
+import matplotlib.pyplot as plt
+
+class Alexnet(nn.Module):
+    def __init__(self,num_classes):
+        super(Alexnet,self).__init__()
+        self.num_classes=num_classes
+        self.get_block()
+
+    def get_block(self):
+        self.conv1=nn.Sequential(
+                nn.Conv2d(1,96,(11,11),stride=1,padding=2),
+                nn.ReLU(inplace=True),
+                nn.modules.MaxPool2d((3,3),stride=2)
+        )
+
+        self.conv2=nn.Sequential(
+                nn.Conv2d(96,256,(5,5),stride=1,padding=2),
+                nn.ReLU(inplace=True),
+                nn.modules.MaxPool2d((3,3),stride=2)
+        )
+
+        self.conv3=nn.Sequential(
+                nn.Conv2d(256,384,(3,3),stride=1,padding=1),
+                nn.ReLU(inplace=True),
+        )
+
+        self.conv4=nn.Sequential(
+                nn.Conv2d(384,384,(3,3),stride=1,padding=1),
+                nn.ReLU(inplace=True)
+        )
+
+        self.conv5=nn.Sequential(
+                nn.Conv2d(384,256,(3,3),stride=1,padding=1),
+                nn.ReLU(inplace=True),
+                nn.modules.MaxPool2d((3,3),stride=2)
+        )
+
+        self.conv6=nn.Sequential(
+                nn.Linear(1*1*256,4096),  ###6*6*256根据输入尺寸进行调整
+                nn.ReLU(inplace=True)
+        )
+
+        self.conv7=nn.Sequential(
+                nn.Linear(4096,self.num_classes)
+        )
+
+    def forward(self,x):
+        #import pdb;pdb.set_trace()
+        batch_size=x.size()[0]
+        x=self.conv1(x)
+        x=self.conv2(x)
+        x=self.conv3(x)
+        x=self.conv4(x)
+        x=self.conv5(x)
+        #print(x.shape)
+        x=x.view(batch_size,-1)
+        x=self.conv6(x)
+        x=self.conv7(x)
+        return x
+
+####读取数据
+def get_data():
+
+    data_tf=transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize([0.5],[0.5])
+    ])
+
+    train_set=mnist.MNIST('./data',train=True,transform=data_tf,download=True)
+    test_set=mnist.MNIST('./data',train=False,transform=data_tf,download=True)
+
+    train_data=DataLoader(train_set,batch_size=64,shuffle=True)
+    test_data=DataLoader(test_set,batch_size=128,shuffle=False)
+
+    return train_data,test_data
+
+def train():
+    train_iter,test_iter=get_data()
+    num_classes=10
+    num_epoches=20
+
+    model=Alexnet(num_classes)
+    loss=nn.CrossEntropyLoss()
+    optimizer=optim.SGD(model.parameters(),1e-1)
+
+    for epoch in range(num_epoches):
+        train_loss,train_acc=0,0
+        for cnt,(img,label) in enumerate(train_iter):
+            #img,label=Variable(img),Variable(label)
+            out_logits=model(img)
+            cal_loss=loss(out_logits,label)
+
+            optimizer.zero_grad()
+            cal_loss.backward()
+            optimizer.step()
+
+            train_loss+=cal_loss.item()
+            _,pred=out_logits.max(1)
+            train_acc=(pred==label).sum().item()/img.shape[0]
+            plt.plot(cnt,cal_loss)
+            print("train epoch:%d,train loss:%f,train_acc:%f"%(epoch,cal_loss.item(),train_acc))
+
+        eval_loss,eval_acc=0,0
+        for img,label in test_iter:
+            out_=model(img)
+            loss_=loss(out_,label)
+
+            eval_loss+=loss_
+            _,pred=out_.max(1)
+            eval_acc=(pred==label).sum().item()/img.shape[0]
+        print("test epoch:%d,test_loss:%f,test_acc:%f"%(epoch,eval_loss/len(test_iter),eval_acc/len(test_iter)))
+
+if __name__=="__main__":
+    train()
