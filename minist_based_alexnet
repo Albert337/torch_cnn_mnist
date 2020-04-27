@@ -9,7 +9,6 @@ from torchvision.datasets import mnist
 from torchvision import transforms
 from torch.autograd import Variable
 from torch import optim
-import matplotlib.pyplot as plt
 
 class Alexnet(nn.Module):
     def __init__(self,num_classes):
@@ -108,7 +107,6 @@ def train():
             train_loss+=cal_loss.item()
             _,pred=out_logits.max(1)
             train_acc=(pred==label).sum().item()/img.shape[0]
-            plt.plot(cnt,cal_loss)
             print("train epoch:%d,train loss:%f,train_acc:%f"%(epoch,cal_loss.item(),train_acc))
 
         eval_loss,eval_acc=0,0
