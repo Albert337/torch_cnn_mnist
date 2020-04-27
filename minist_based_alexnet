@@ -47,7 +47,7 @@ class Alexnet(nn.Module):
         )
 
         self.conv6=nn.Sequential(
-                nn.Linear(1*1*256,4096),  ###6*6*256根据输入尺寸进行调整
+                nn.Linear(1*1*256,4096),  ###1*1*256根据输入尺寸进行调整
                 nn.ReLU(inplace=True)
         )
 
